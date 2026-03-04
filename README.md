@@ -1,142 +1,155 @@
 # reproducible-drought-report
 
-A reproducible drought report pipeline and **PyShiny** app. All steps can be run with Python from the project root.
+A reproducible **Japan PRCP** (precipitation) pipeline and **PyShiny** app: Snakemake builds the data, and the app shows station metadata on an OpenStreetMap map 
 
 ---
 
-## 1. Prerequisites
+# A — Manual setup 
+
+Use this when you want to run everything on your machine, experiment with the code, and learn the pipeline step by step.
+
+## A.1 Prerequisites
 
 - **Conda** (Miniconda or Anaconda). Install from [conda.io](https://docs.conda.io/en/latest/miniconda.html) if needed.
 - A terminal (PowerShell, Command Prompt, or Git Bash on Windows; Terminal on Mac/Linux).
 
----
+## A.2 One-time setup
 
-## 2. One-time setup (Conda)
-
-Open a terminal, go to the project folder, then create and activate the Conda environment from `environment.yml`.
+From the project root:
 
 ```bash
-# Go to the project folder (adjust the path to where your project lives)
-cd "c:\Users\hxng\OneDrive - UC San Diego\tool-dev\reproducible-drought-report"
-
-# Create the Conda env (includes Python 3.10+ and all dependencies)
+# Create and activate the Conda environment
 conda env create -f environment.yml
-
-# Activate it (same on Windows, Mac, and Linux)
 conda activate drought-report
+
+# Install remaining dependencies (Snakemake, shinywidgets, etc.)
+pip install -r requirements.txt
 ```
 
-After activation, your prompt shows `(drought-report)` (or the env name from `environment.yml`).
+Your prompt should show `(drought-report)`.
 
-**Updating the env later** (e.g. after changing `environment.yml`):
+**Later, after editing `environment.yml` or `requirements.txt`:**
 
 ```bash
 conda activate drought-report
 conda env update -f environment.yml --prune
+pip install -r requirements.txt
 ```
 
----
+## A.3 Run the data pipeline (manual)
 
-## 3. Running the PyShiny app (quickest way to see the app)
+The pipeline has three stages. You can run them via **Snakemake** (recommended) or by calling the Python scripts yourself (good for learning).
 
-You can run the app **without** running any data pipeline first. The app will use a small built-in dummy dataset so it still works.
+**Option 1 — Snakemake (one command for all outputs):**
 
 ```bash
-# From the project root, with the Conda env activated (conda activate drought-report):
+conda activate drought-report
+snakemake -j 1
+```
+
+This runs, in order:
+
+1. **japan_manifest** — downloads `ghcnd-inventory.txt` if needed, then builds `data/manifests/japan_station_ids_prcp.txt`, `japan_prcp_inventory.csv`, and `japan_prcp_manifest.meta.json`.
+2. **japan_metadata** — downloads `ghcnd-stations.txt`, then writes `data/metadata/japan_stations.csv`.
+3. **japan_by_station** — downloads each station’s daily CSV from NOAA into `data/by_station_japan/<STATION_ID>.csv.gz` (can be slow; many files).
+
+To run only the first two steps (manifest + metadata, no per-station downloads):
+
+```bash
+snakemake japan_manifest japan_metadata -j 1
+```
+
+**Option 2 — Instead of using Snakemake, run the Python scripts manually:**
+
+```bash
+conda activate drought-report
+
+python code/build_manifest.py
+python code/sync_station_metadata.py
+python code/fetch_and_sync_data_by_station.py   # optional; downloads many files
+```
+
+## A.4 Run the PyShiny app
+
+After the pipeline has produced at least `data/metadata/japan_stations.csv` (from `japan_manifest` + `japan_metadata`), start the app:
+
+```bash
+conda activate drought-report
 python -m shiny run --reload code/app.py
 ```
 
-- Your browser should open to something like **http://127.0.0.1:8000** (or the URL printed in the terminal).
-- **`--reload`** means the app restarts when you change `code/app.py` (handy while learning).
-- To stop: press **Ctrl+C** in the terminal.
+- Open the URL shown in the terminal (e.g. **http://127.0.0.1:8000**).
+- Use the sidebar to pick a station; the map (Plotly + OpenStreetMap) and the daily PRCP time series update.
+- Stop with **Ctrl+C**.
 
-That’s all you need to start exploring the PyShiny UI (sidebar filters, plot, table).
+**Note:** The app needs `data/metadata/japan_stations.csv` at startup. If you haven’t run the pipeline, run at least `snakemake japan_manifest japan_metadata -j 1` first.
 
----
-
-## 4. Running the data pipeline (optional)
-
-If you want the app and the “synthetic” pipeline to use **files on disk** (e.g. `data/drought_metadata.csv`) instead of the in-memory dummy data, run the pipeline steps in order (with `conda activate drought-report` first).
-
-**Option A – Run each script by hand (good for learning):**
-
-```bash
-# 1) Download raw data (writes data/raw_drought_download.csv)
-#    Note: download_data.py is set up to fetch from a URL; if that URL is
-#    still a placeholder, it will fail. See code/download_data.py to set a real URL,
-#    or temporarily use the GHCN “light” pipeline below instead.
-python code/download_data.py
-
-# 2) Index, parse, and transform into drought_metadata.csv
-python code/index_archive.py
-python code/parse_data.py
-python code/transform_data.py
-```
-
-After this, `data/drought_metadata.csv` exists and the app will load it automatically next time you run it.
-
-**Option B – Use the Makefile (if you have `make` installed, e.g. via Git Bash or WSL):**
-
-```bash
-make data      # runs all four steps above (use Conda env: conda activate drought-report first)
-make app       # runs the PyShiny app
-```
-
-*(`make install` installs via pip into the current Python; with Conda you use `conda env create -f environment.yml` instead.)*
-
-**Option C – GHCN/NOAA pipeline (different data source):**
-
-This uses NOAA GHCN-Daily data and produces `visuals/world_drought.png` and `index.html`. Some steps download large files or use placeholder logic (see comments in the scripts).
-
-```bash
-# If you have make:
-make ghcnd_pipeline
-
-# Or run the Python scripts in order:
-python code/get_inventory.py
-python code/get_station_data.py
-python code/summarize_dly_files.py
-python code/get_regions_years.py
-python code/plot_drought_by_region.py
-python code/render_index.py
-```
-
-(Omitting `get_all_archive.py` and `get_all_filenames.py` avoids the ~3.7 GB download; the rest can still run with placeholder/small data where noted.)
-
----
-
-## 5. Summary cheat sheet
-
-| Goal                         | Command |
-|-----------------------------|--------|
-| Create Conda env            | `conda env create -f environment.yml` |
-| Activate Conda env           | `conda activate drought-report` |
-| Run the PyShiny app         | `python -m shiny run --reload code/app.py` |
-| Run synthetic data pipeline | `python code/download_data.py` then `index_archive.py` → `parse_data.py` → `transform_data.py` (or `make data`) |
-| Generate static plot       | `python code/make_visualizations.py` (after `make data` or the four steps above) |
-| Run full GHCN pipeline      | `make ghcnd_pipeline` (or run the `code/get_*.py`, `summarize_dly_files.py`, etc., in order) |
-
----
-
-## 6. Project layout (reference)
+## A.5 Project layout (reference)
 
 ```
-├── .github/workflows/ci.yml   # CI runs pipeline + checks
+├── .github/workflows/ci.yml   # GitHub Actions CI (see Part B)
 ├── code/
-│   ├── app.py                 # PyShiny app (run this to start the app)
-│   ├── download_data.py       # Download raw data from URL → data/raw_drought_download.csv
-│   ├── index_archive.py       # Index raw data
-│   ├── parse_data.py          # Parse into clean table
-│   ├── transform_data.py      # Build data/drought_metadata.csv
-│   ├── make_visualizations.py # Build visuals/drought_timeseries.png
-│   └── get_*.py, summarize_*, plot_*, render_*  # GHCN pipeline scripts
-├── data/                      # Downloaded and derived data (often in .gitignore)
-├── visuals/                   # Generated figures
-├── environment.yml            # Conda env definition (recommended)
-├── requirements.txt          # pip fallback / CI
-├── Makefile
-├── index.html                 # Generated by render_index.py (GHCN pipeline)
-└── README.md                  # This file
+│   ├── app.py                 # PyShiny app (station map + PRCP time series)
+│   ├── build_manifest.py      # Japan PRCP station list from ghcnd-inventory
+│   ├── sync_station_metadata.py  # ghcnd-stations.txt → japan_stations.csv
+│   └── fetch_and_sync_data_by_station.py  # Per-station daily CSVs
+├── data/                      # Pipeline outputs (manifest, metadata, by_station_japan/)
+├── Snakefile                  # Snakemake pipeline definition
+├── environment.yml            # Conda env (Python, pandas, shiny, plotly)
+├── requirements.txt           # pip deps (snakemake, shinywidgets, etc.)
+└── README.md
 ```
 
-For a first run: **`conda env create -f environment.yml` → `conda activate drought-report` → `python -m shiny run --reload code/app.py`** and open the URL in your browser.
+---
+
+# B — Automated reproducible pipeline (GitHub Actions)
+
+Use this when you want the pipeline to run automatically on every push or pull request to `main`, with no manual steps.
+
+## B.1 What runs automatically
+
+When you push to `main` or open a pull request targeting `main`, GitHub Actions runs the workflow in `.github/workflows/ci.yml`. It:
+
+1. **Checkout** the repository.
+2. **Set up Python 3.11** and install dependencies from `requirements.txt`.
+3. **Run the pipeline** with Snakemake: `snakemake japan_manifest japan_metadata -j 1`.  
+   Only manifest and metadata are built (no `japan_by_station`), so CI stays fast and avoids downloading many station files.
+4. **Smoke test** the app: `python -c "from code.app import app"` to ensure the app module loads after the data is in place.
+
+If any step fails, the workflow fails and you see a red X on the commit or PR.
+
+## B.2 How to enable it
+
+1. **Push the repo to GitHub** (including the `.github/workflows/ci.yml` file).
+2. **Default branch:** the workflow is configured for the `main` branch. If your default branch is different (e.g. `master`), either rename it to `main` or edit the `on.push.branches` and `on.pull_request.branches` in `ci.yml` to match.
+3. **No secrets required:** the workflow only installs dependencies, runs Snakemake, and imports the app. It does not need API keys or tokens.
+
+After that, every push to `main` and every PR into `main` will trigger the workflow. You can see runs under the **Actions** tab of the repository.
+
+## B.3 Optional: status badge
+
+To show CI status in your README, add this (replace `OWNER` and `REPO` with your GitHub user/org and repo name):
+
+```markdown
+![CI](https://github.com/OWNER/REPO/actions/workflows/ci.yml/badge.svg)
+```
+
+## B.4 Re-running or debugging
+
+- **Re-run a failed workflow:** Open the run in the Actions tab and click **Re-run all jobs**.
+- **Run only on demand (optional):** To add a “Run workflow” button, you can add `workflow_dispatch:` under `on:` in `ci.yml`; then you can trigger the same workflow manually from the Actions tab.
+
+---
+
+# Quick reference
+
+| Goal | Command (manual) |
+|------|-------------------|
+| Create env | `conda env create -f environment.yml` |
+| Activate env | `conda activate drought-report` |
+| Install pip deps | `pip install -r requirements.txt` |
+| Run full pipeline | `snakemake -j 1` |
+| Run manifest + metadata only | `snakemake japan_manifest japan_metadata -j 1` |
+| Run app | `python -m shiny run --reload code/app.py` |
+
+**Automated:** Push to `main` (or open a PR) — CI runs `snakemake japan_manifest japan_metadata` and the app smoke test (see Part B).
