@@ -34,9 +34,9 @@ jobs:
           pip install -r requirements.txt
           pip install shinylive
 
-      - name: Run pipeline (Snakemake)
+      - name: Run pipeline (manifest + metadata + app_data only)
         run: |
-          snakemake -j 1
+          snakemake app_data -j 1
 
       - name: Export Shinylive site
         run: |
