@@ -39,7 +39,7 @@ jobs:
 
       # Export Shinylive site for the app in code/ into build/
       - name: Export Shinylive site
-        run: python -m shinylive export code build
+        run: shinylive export code build
 
       # Upload the build/ directory as the Pages artifact
       - name: Upload Pages artifact
