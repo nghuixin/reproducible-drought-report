@@ -1,0 +1,26 @@
+# Conda environment for reproducible-drought-report
+# Create and activate:
+#   conda env create -f environment.yml
+#   conda activate drought-report
+
+name: drought-report
+channels:
+  - conda-forge
+  - defaults
+
+dependencies:
+  # Core Python
+  - python>=3.10,<3.13
+
+  # Scientific/data stack (installed via conda)
+  - pandas>=2.0
+  - matplotlib>=3.7
+  - requests>=2.31
+
+  # Pip for packages not (reliably) on conda
+  - pip
+
+  # PyShiny and any other pip-only deps
+  - pip:
+      - shiny>=1.0.0
+      - plotly>=5.0.0

@@ -1,0 +1,24 @@
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.log
+
+.env
+.venv/
+.vscode/
+.idea/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Data and derived outputs (reproducible via pipeline)
+data/
+!data/.gitkeep
+
+# Generated visuals
+visuals/
+!visuals/.gitkeep
+
+# OS files
+.DS_Store
+Thumbs.db
