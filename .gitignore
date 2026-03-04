@@ -18,7 +18,7 @@ code/app_data/
 # Generated visuals
 visuals/
 !visuals/.gitkeep
-/build/
+build/
 
 # OS files
 .DS_Store
