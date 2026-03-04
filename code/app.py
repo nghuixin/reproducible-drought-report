@@ -7,7 +7,7 @@ import plotly.express as px
 from shiny import App, reactive, render, ui
 from shinywidgets import output_widget, render_widget
 import json
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
  
 
@@ -146,7 +146,9 @@ first_station = (
 )
 
 app_ui = ui.page_fluid(
-    ui.panel_title(f"Precipitation Index in Japan 降水量指数 - Updated 更新 {updated_as_of}"),
+    ui.panel_title(
+        f"Precipitation Index in Japan 降水量指数 - Updated 更新 {updated_as_of}"
+    ),
     ui.layout_sidebar(
         ui.sidebar(
             ui.h4("Station 気象庁"),
@@ -163,15 +165,18 @@ app_ui = ui.page_fluid(
                 "Date 日付",
                 value=date(2000, 4, 1),
                 min=date(1945, 1, 1),
-                max=date.today(),
+                max=date.today(),  # always today
             ),
+            # If you want the old sidebar outputs back, uncomment:
+            # ui.output_ui("prcp_on_day"),
+            # ui.output_ui("zscore_recent_window"),
+        ),
         ui.div(
             ui.h4(""),
             output_widget("station_map"),
         ),
     ),
 )
-
 # ----------------------------------------------------------------------
 # Server
 # ----------------------------------------------------------------------
