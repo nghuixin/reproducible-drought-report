@@ -8,7 +8,7 @@ from shiny import App, reactive, render, ui
 from shinywidgets import output_widget, render_widget
 import json
 from datetime import datetime, timezone
-from zoneinfo import ZoneInfo
+
  
 
 
@@ -267,7 +267,13 @@ def server(input, output, session):
         fig.update_traces(
         customdata=stations_df[["name", "station_id"]],
         hovertemplate="Station: %{customdata[0]}<br>ID: %{customdata[1]}<extra></extra>",
+        marker=dict(
+        size=7,
+        color="darkblue"   # <-- change station dot color here
+    )
         )
+
+ 
 
         # Highlight selected station
         if sid is not None and sid in stations_by_id.index:
