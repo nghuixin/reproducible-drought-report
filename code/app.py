@@ -7,8 +7,9 @@ import plotly.express as px
 from shiny import App, reactive, render, ui
 from shinywidgets import output_widget, render_widget
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
+ 
 
 
 # ----------------------------------------------------------------------
@@ -18,18 +19,26 @@ from zoneinfo import ZoneInfo
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = PROJECT_ROOT / "data"
 META_DIR = DATA_DIR / "metadata"
-
-
 MANIFEST_DIR = DATA_DIR / "manifests"
 BY_STATION_DIR = DATA_DIR / "by_station_japan"
 
+# When exporting to Shinylive or packaging the app, we prefer reading from
+# code/app_data/, which is populated by prepare_app_data.py. For local
+# development, we fall back to the data/ outputs if app_data is missing.
+APP_DATA_DIR = Path(__file__).parent / "app_data"
 
-METADATA_PATH = MANIFEST_DIR / "japan_prcp_manifest.meta.json"
-STATIONS_PATH = META_DIR / "japan_stations.csv"
-COVERAGE_PATH = MANIFEST_DIR / "japan_prcp_inventory.csv"
+APP_META_PATH = APP_DATA_DIR / "japan_prcp_manifest.meta.json"
+APP_STATIONS_PATH = APP_DATA_DIR / "japan_stations.csv"
+APP_COVERAGE_PATH = APP_DATA_DIR / "japan_prcp_inventory.csv"
+
+METADATA_PATH = APP_META_PATH if APP_META_PATH.exists() else MANIFEST_DIR / "japan_prcp_manifest.meta.json"
+STATIONS_PATH = APP_STATIONS_PATH if APP_STATIONS_PATH.exists() else META_DIR / "japan_stations.csv"
+COVERAGE_PATH = APP_COVERAGE_PATH if APP_COVERAGE_PATH.exists() else MANIFEST_DIR / "japan_prcp_inventory.csv"
+LOCAL_TZ  = timezone.utc
+
+ 
 
 
-LOCAL_TZ = ZoneInfo("America/Los_Angeles")
 
 def read_updated_as_of(metadata_path: Path) -> str:
     if not metadata_path.exists():
@@ -148,7 +157,7 @@ app_ui = ui.page_fluid(
                 selected=first_station,
                 options={"placeholder": "Search by name or station ID..."},
             ),
-            ui.hr(),
+          #  ui.hr(),
             ui.h5("Precipitation 降水量指数 (mm)" ),
             ui.input_date("selected_day", "Date 日付", value="2000-04-01"),
             ui.output_ui("prcp_on_day"),
@@ -234,14 +243,30 @@ def server(input, output, session):
             lat="latitude",
             lon="longitude",
             hover_name="name",
-            hover_data={"station_id": True},
+            # Only show station_id in hover; hide lat/lon.
+            hover_data={
+                "station_id": True,
+                "latitude": False,
+                "longitude": False,
+            },
             zoom=3.5,
             center={"lat": 35.0, "lon": 135.0},
         )
         fig.update_layout(
             mapbox_style="open-street-map",
-            margin=dict(l=0, r=0, t=0, b=0),
+            margin=dict(l=10, r=10, t=0, b=0),
             height=450,
+            hoverlabel=dict(
+            bgcolor="rgba(0,0,0,0.75)",  # hover box background
+            font_color="white",
+            font=dict(family="Noto Serif Condensed Regular", size=12),      # text color
+            #font_size=12
+        ),
+        )
+
+        fig.update_traces(
+        customdata=stations_df[["name", "station_id"]],
+        hovertemplate="Station: %{customdata[0]}<br>ID: %{customdata[1]}<extra></extra>",
         )
 
         # Highlight selected station
@@ -251,7 +276,7 @@ def server(input, output, session):
                 lat=[row["latitude"]],
                 lon=[row["longitude"]],
                 mode="markers",
-                marker=dict(size=14, color="red"),
+                marker=dict(size=12, color="red"),
                 hoverinfo="skip",
                 showlegend=False,
             )

@@ -3,7 +3,7 @@ __pycache__/
 *.pyo
 *.pyd
 *.log
-
+*.
 .env
 .venv/
 .vscode/
@@ -14,10 +14,11 @@ __pycache__/
 # Data and derived outputs (reproducible via pipeline)
 data/
 !data/.gitkeep
-
+code/app_data/
 # Generated visuals
 visuals/
 !visuals/.gitkeep
+/build/
 
 # OS files
 .DS_Store

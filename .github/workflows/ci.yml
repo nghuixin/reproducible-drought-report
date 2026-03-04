@@ -1,10 +1,16 @@
-name: CI
+name: CI and Pages
 
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
+  schedule:
+    - cron: "0 2 * * *"   # daily at 02:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
 
 jobs:
   build:
@@ -18,10 +24,36 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install --upgrade pip && pip install -r requirements.txt
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install shinylive
 
-      - name: Run pipeline (manifest + metadata only)
-        run: snakemake japan_manifest japan_metadata -j 1
+      # Build manifest + metadata + app_data via Snakemake
+      - name: Run Snakemake (app data pipeline)
+        run: snakemake app_data -j 1
 
-      - name: Smoke test app
+      # Optional: basic import smoke test
+      - name: Smoke test app import
         run: python -c "from code.app import app"
+
+      # Export Shinylive site for the app in code/ into build/
+      - name: Export Shinylive site
+        run: python -m shinylive export code build
+
+      # Upload the build/ directory as the Pages artifact
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: build
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4
