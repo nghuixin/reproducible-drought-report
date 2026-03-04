@@ -1,59 +1,41 @@
-name: CI and Pages
+name: CI
 
 on:
+  pull_request:
   push:
     branches: [main]
-  schedule:
-    - cron: "0 2 * * *"   # daily at 02:00 UTC
   workflow_dispatch:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 jobs:
-  build:
+  ci:
     runs-on: ubuntu-latest
-
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out repo
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Set up Python (cached)
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: "pip"
 
-      - name: Install dependencies
+      - name: Install CI dependencies
         run: |
-          pip install --upgrade pip
+          python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install shinylive
 
-      # Build manifest + metadata + app_data via Snakemake
+      # Keep CI focused: build the app bundle inputs (fast target)
       - name: Run Snakemake (app data pipeline)
-        run: snakemake app_data -j 1
+        run: |
+          snakemake app_data -j 1
 
-      # Optional: basic import smoke test
-      - name: Smoke test app import
-        run: python -c "from code.app import app"
-
-      # Export Shinylive site for the app in code/ into build/
-      - name: Export Shinylive site
-        run: shinylive export code build
-
-      # Upload the build/ directory as the Pages artifact
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: build
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deploy
-        uses: actions/deploy-pages@v4
+      # Basic sanity check that expected artifacts exist
+      - name: Validate app bundle outputs exist
+        run: |
+          test -f code/app_data/japan_stations.csv
+          test -f code/app_data/japan_prcp_inventory.csv
+          test -f code/app_data/japan_prcp_manifest.meta.json
+          echo "App bundle files present."
