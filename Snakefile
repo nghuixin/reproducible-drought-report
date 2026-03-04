@@ -55,7 +55,7 @@ rule app_data:
         APP_DATA / "japan_prcp_inventory.csv",
         APP_DATA / "japan_prcp_manifest.meta.json",
     shell:
-        "python {CODE}/prepare_app_data.py"
+        "python {CODE}/build_app_bundle.py"
 
 
 rule japan_by_station:
