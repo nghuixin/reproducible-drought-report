@@ -67,9 +67,9 @@ if not STATIONS_PATH.exists():
     )
 
 stations_df = pd.read_csv(STATIONS_PATH)
- 
 stations_df.columns = [c.strip().lower() for c in stations_df.columns]
 stations_df = stations_df.rename(columns={"id": "station_id"})
+stations_df["station_id"] = stations_df["station_id"].astype(str).str.strip()
 # Ensure we have numeric lat/lon
 stations_df["latitude"] = pd.to_numeric(stations_df["latitude"], errors="coerce")
 stations_df["longitude"] = pd.to_numeric(stations_df["longitude"], errors="coerce")
@@ -101,12 +101,12 @@ if MONTHLY_PATH.exists():
     monthly_prcp_df = pd.read_csv(MONTHLY_PATH)
     monthly_prcp_df["station_id"] = monthly_prcp_df["station_id"].astype(str)
 
-# Latest PRCP per station (date + value) for "latest precipitation" when user selects a location.
+# Latest PRCP per station (date + value), same pattern as monthly_prcp_df
+# CSV columns: station_id, latest_date, prcp_mm (from build_latest_prcp.py)
 latest_prcp_df: pd.DataFrame | None = None
 if LATEST_PATH.exists():
     latest_prcp_df = pd.read_csv(LATEST_PATH)
-    latest_prcp_df["station_id"] = latest_prcp_df["station_id"].astype(str)
-    latest_prcp_df = latest_prcp_df.set_index("station_id")
+    latest_prcp_df["station_id"] = latest_prcp_df["station_id"].astype(str).str.strip()
 
 
 def load_station_prcp(station_id: str):
@@ -170,11 +170,13 @@ first_station = (
 
 app_ui = ui.page_fluid(
     ui.panel_title(
-        f"Precipitation Index in Japan 降水量指数 - Updated 更新 {updated_as_of}"
+        f"Drought Index in Japan 干旱指数",
+        window_title="Japan Drought Index",
     ),
+    ui.p(f"Updated 更新 {updated_as_of}", class_="text-muted mb-3"),
     ui.layout_sidebar(
         ui.sidebar(
-            ui.h4("Station 気象庁"),
+            ui.h5("Station 気象庁", class_="mt-0 mb-2"),
             ui.input_selectize(
                 "station_id",
                 "Location and ID 地点とID",
@@ -182,9 +184,12 @@ app_ui = ui.page_fluid(
                 selected=first_station,
                 options={"placeholder": "Search by name or station ID..."},
             ),
-            ui.h5("Precipitation 降水量指数 (mm)"),
-           ui.input_numeric("selected_year", "Year 年", value=2000, min=1970, max=date.today().year),
-           ui.input_select(
+            ui.div(ui.output_ui("station_info"), class_="mt-3 mb-3"),
+            ui.h6("Latest Precipitation 最新降水量", class_="mb-2"),
+            ui.output_ui("precipitation_for_day"),
+            ui.h6("Drought Index 干旱指数", class_="mt-4 mb-2"),
+            ui.input_numeric("selected_year", "Year 年", value=2000, min=1970, max=date.today().year),
+            ui.input_select(
                 "selected_month",
                 "Month 月",
                 choices={
@@ -192,12 +197,27 @@ app_ui = ui.page_fluid(
                     "7": "Jul", "8": "Aug", "9": "Sep", "10": "Oct", "11": "Nov", "12": "Dec" },
                 selected=str(4),
             ),
-            ui.input_action_button("update_map", "Update map"),
-            ui.output_ui("latest_prcp"),
+            ui.input_action_button("update_map", "Update map", class_="mt-2"),
         ),
         ui.div(
-            ui.h4(""),
             output_widget("station_map"),
+            ui.div(
+                ui.h5("How the z-score (drought index) is calculated", class_="mt-4 mb-3"),
+                ui.p(
+                    "For each station and the month you choose (e.g. April), we use that month’s total precipitation in every year.",
+                    class_="text-muted mb-2",
+                ),
+                ui.p(
+                    "For the year you select, the z-score is: (that year’s value − mean of all earlier years) ÷ standard deviation of those earlier years. "
+                    "The result is clipped to the range −2 to +2.",
+                    class_="text-muted mb-2",
+                ),
+                ui.p(
+                    "Red = low precipitation (negative z-score); blue = high precipitation (positive z-score). "
+                    "At least 25 years of history are required to compute the index.",
+                    class_="text-muted mb-0",
+                ),
+            ),
         ),
     ),
 )
@@ -275,6 +295,9 @@ def server(input, output, session):
     @reactive.Calc
     def selected_station_id() -> Optional[str]:
         sid = input.station_id()
+        if sid is None:
+            return None
+        sid = str(sid).strip()
         if sid in stations_by_id.index:
             return sid
         return None
@@ -337,24 +360,6 @@ def server(input, output, session):
                 out.loc[out["station_id"] == sid, "z_score"] = z
 
         return out
-
-    @output
-    @render.ui
-    def latest_prcp():
-        """Show latest precipitation (date + mm) for the selected station."""
-        sid = selected_station_id()
-        if sid is None or latest_prcp_df is None:
-            return ui.div()
-        if sid not in latest_prcp_df.index:
-            return ui.div(ui.p("Latest precipitation: —", class_="text-muted"))
-        row = latest_prcp_df.loc[sid]
-        return ui.div(
-            ui.p(
-                "Latest precipitation: ",
-                ui.tags.b(f"{row['latest_date']} — {row['prcp_mm']:.1f} mm"),
-            ),
-        )
-
     @output
     @render.ui
     def station_info():
@@ -362,7 +367,7 @@ def server(input, output, session):
         if row is None:
             return ui.div("No station selected.")
 
-        sid = row["station_id"]
+        sid = selected_station_id()
         name = row.get("name", "")
         lat = row.get("latitude", float("nan"))
         lon = row.get("longitude", float("nan"))
@@ -375,14 +380,31 @@ def server(input, output, session):
             cov_text = "unknown"
 
         return ui.div(
-            ui.tags.b(f"{name} ({sid})"),
-            ui.br(),
-            f"Latitude: {lat}  |  Longitude: {lon}",
-            ui.br(),
-            f"Elevation (m): {elev if elev != '' else 'N/A'}",
-            ui.br(),
-            f"PRCP coverage years: {cov_text}",
+            ui.p(ui.tags.b(f"{name} ({sid})"), class_="mb-1"),
+            ui.p(f"Latitude: {lat}  ·  Longitude: {lon}", class_="mb-1 small text-muted"),
+            ui.p(f"Elevation: {elev if elev != '' else 'N/A'} m  ·  Coverage: {cov_text}", class_="mb-0 small text-muted"),
         )
+
+    @output
+    @render.ui
+    def precipitation_for_day():
+        """Latest PRCP from japan_latest_prcp.csv for selected station (same lookup pattern as monthly)."""
+        sid = selected_station_id()
+        if sid is None or latest_prcp_df is None:
+            return ui.p("Latest precipitation: —", class_="text-muted")
+        rows = latest_prcp_df[latest_prcp_df["station_id"] == sid]
+        if rows.empty:
+            return ui.p("Latest precipitation: —", class_="text-muted")
+        row = rows.iloc[0]
+        d = str(row["latest_date"])[:10]
+        v = row["prcp_mm"]
+        if v is None or (isinstance(v, (int, float)) and np.isnan(v)):
+            return ui.p(f"Latest precipitation could not be found on", class_="text-muted")
+        return ui.p(f"Date:  {d}  · Precipitation : {float(v):.1f} mm")
+
+    
+
+    
 
     @output
     @render_widget
@@ -418,7 +440,7 @@ def server(input, output, session):
                 lat="latitude",
                 lon="longitude",
                 color="z_score",
-                color_continuous_scale="RdBu_r",
+                color_continuous_scale="RdBu",
                 range_color=(-2.0, 2.0),
                 hover_name="name",
                 hover_data={
@@ -460,7 +482,7 @@ def server(input, output, session):
             ),
         )
         if has_z.any():
-            layout_kw["coloraxis_colorbar"] = dict(title="Z-score (month PRCP)")
+            layout_kw["coloraxis_colorbar"] = dict(title="Z-score (red = dry, blue = wet)")
         fig.update_layout(**layout_kw)
 
         # Highlight selected station on top

@@ -45,14 +45,18 @@ def read_one_station_latest(path: Path) -> pd.DataFrame | None:
         return None
     df = df[df["ELEMENT"] == "PRCP"].copy()
     df = df[df["DATA_VALUE"] != -9999]
+    if df.empty:
+        return None
     df["PRCP_MM"] = df["DATA_VALUE"] / 10.0
     df["DATE"] = pd.to_datetime(df["DATE"], format="%Y%m%d")
     station_id = path.stem.replace(".csv", "")
+  
     # Latest observation (1-day buffer: just the max date in the file)
     idx = df["DATE"].idxmax()
     row = df.loc[idx]
+    #print(station_id)
     return pd.DataFrame([{
-        "station_id": station_id,
+        "station_id": station_id, # df["station_id"],    
         "latest_date": row["DATE"].strftime("%Y-%m-%d"),
         "prcp_mm": float(row["PRCP_MM"]),
     }])
