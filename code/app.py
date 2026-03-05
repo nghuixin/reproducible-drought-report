@@ -307,7 +307,7 @@ def server(input, output, session):
                 if station_monthly.empty:
                     continue
                 month_rows = station_monthly[
-                    (station_monthly["month"] == month) & (station_monthly["year"] >= 1970)
+                    (station_monthly["month"] == month) & (station_monthly["year"] >= 1945)
                 ]
                 if month_rows.empty:
                     continue
@@ -324,7 +324,7 @@ def server(input, output, session):
                 df = load_station_prcp(sid)
             except FileNotFoundError:
                 continue
-            per_year = month_precip_by_year(df, month=month, min_year=1970)
+            per_year = month_precip_by_year(df, month=month, min_year=1)
             z = zscore_for_year(per_year, target_year=year, min_hist_years=25)
             if z is not None:
                 out.loc[out["station_id"] == sid, "z_score"] = z
