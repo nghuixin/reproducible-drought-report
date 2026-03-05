@@ -42,6 +42,7 @@ python -m shiny run --reload code/app.py
 
 Open the URL in the terminal (e.g. `http://127.0.0.1:8000`). Use the station dropdown and date picker; the map and time series should update. Stop with **Ctrl+C**.
 
+
 ### 4. Rebuild the Shinylive static site (optional)
 
 To reproduce what GitHub Actions deploys to Pages:
