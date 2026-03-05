@@ -3,28 +3,25 @@ from __future__ import annotations
 """
 Prepare small, app-friendly data files for the PyShiny Japan PRCP app.
 
-This script copies (or lightly reshapes) pipeline outputs from the data/
-directory into code/app_data/, so that:
+This script copies pipeline outputs from the data/ directory into code/app_data/,
+so that:
 
 - The interactive app can read from a stable, versioned location
 - A Shinylive export can bundle only the minimal data it needs
 
-Current behavior
-----------------
-- Reads:
-    data/metadata/japan_stations.csv
-    data/manifests/japan_prcp_inventory.csv
-    data/manifests/japan_prcp_manifest.meta.json
-- Writes (overwrites):
-    code/app_data/japan_stations.csv
-    code/app_data/japan_prcp_inventory.csv
-    code/app_data/japan_prcp_manifest.meta.json
+Expected inputs (produced by the Snakemake pipeline)
+----------------------------------------------------
+- data/metadata/japan_stations.csv
+- data/manifests/japan_prcp_inventory.csv
+- data/manifests/japan_prcp_manifest.meta.json
+- data/monthly/japan_monthly_prcp.csv
 
-Notes
------
-- At the moment this script simply copies the full CSVs/JSON into app_data.
-  If the files become too large for client-side use (e.g. in Shinylive), you
-  can add filtering/aggregation here (e.g., subset stations or years).
+Outputs (overwritten)
+---------------------
+- code/app_data/japan_stations.csv
+- code/app_data/japan_prcp_inventory.csv
+- code/app_data/japan_prcp_manifest.meta.json
+- code/app_data/japan_monthly_prcp.csv
 """
 
 from pathlib import Path
@@ -40,42 +37,30 @@ MONTHLY_DIR = DATA_DIR / "monthly"
 APP_DATA_DIR = PROJECT_ROOT / "code" / "app_data"
 
 
-def copy_if_exists(src: Path, dst: Path) -> None:
+def copy_required(src: Path, dst: Path) -> None:
+    """
+    Copy a required file. Fail if missing or empty to keep builds reproducible.
+    """
     if not src.exists():
         raise FileNotFoundError(f"Expected input file not found: {src}")
+    if src.stat().st_size == 0:
+        raise FileNotFoundError(f"Expected input file is empty: {src}")
     dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(src, dst)
     print(f"Copied {src} -> {dst}")
 
 
-def copy_optional(src: Path, dst: Path) -> None:
-    if src.exists():
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(src, dst)
-        print(f"Copied {src} -> {dst}")
-    else:
-        print(f"Optional {src} not found; skipping (app will use per-station reads or show no z-scores).")
-
-
 def main() -> None:
-    stations_src = META_DIR / "japan_stations.csv"
-    coverage_src = MANIFEST_DIR / "japan_prcp_inventory.csv"
-    meta_src = MANIFEST_DIR / "japan_prcp_manifest.meta.json"
+    files = [
+        (META_DIR / "japan_stations.csv", APP_DATA_DIR / "japan_stations.csv"),
+        (MANIFEST_DIR / "japan_prcp_inventory.csv", APP_DATA_DIR / "japan_prcp_inventory.csv"),
+        (MANIFEST_DIR / "japan_prcp_manifest.meta.json", APP_DATA_DIR / "japan_prcp_manifest.meta.json"),
+        (MONTHLY_DIR / "japan_monthly_prcp.csv", APP_DATA_DIR / "japan_monthly_prcp.csv"),
+    ]
 
-    stations_dst = APP_DATA_DIR / "japan_stations.csv"
-    coverage_dst = APP_DATA_DIR / "japan_prcp_inventory.csv"
-    meta_dst = APP_DATA_DIR / "japan_prcp_manifest.meta.json"
-
-    copy_if_exists(stations_src, stations_dst)
-    copy_if_exists(coverage_src, coverage_dst)
-    copy_if_exists(meta_src, meta_dst)
-
-    # Precomputed monthly PRCP (optional): makes z-score map instant instead of 202 file reads
-    monthly_src = MONTHLY_DIR / "japan_monthly_prcp.csv"
-    monthly_dst = APP_DATA_DIR / "japan_monthly_prcp.csv"
-    copy_optional(monthly_src, monthly_dst)
+    for src, dst in files:
+        copy_required(src, dst)
 
 
 if __name__ == "__main__":
     main()
-

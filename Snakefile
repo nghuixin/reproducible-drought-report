@@ -12,7 +12,8 @@ rule all:
         DATA / "ghcnd-inventory.txt",
         DATA / "manifests" / "japan_station_ids_prcp.txt",
         DATA / "manifests" / "japan_prcp_inventory.csv",
-        DATA / "manifests" / "japan_prcp_manifest.meta.json",
+        DATA / "manifests" / "japan_prcp_manifest.meta.json",   
+        DATA / "monthly" / "japan_monthly_prcp.csv",
 
         # station metadata outputs
         DATA / "metadata" / "ghcnd-stations.txt",
@@ -22,6 +23,7 @@ rule all:
         APP_DATA / "japan_stations.csv",
         APP_DATA / "japan_prcp_inventory.csv",
         APP_DATA / "japan_prcp_manifest.meta.json",
+        APP_DATA / "japan_monthly_prcp.csv",
 
         # by_station sync marker (stable target)
         DATA / "by_station_japan" / "_sync.done",
