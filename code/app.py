@@ -446,7 +446,6 @@ def server(input, output, session):
                 lat=[row["latitude"]],
                 lon=[row["longitude"]],
                 mode="markers",
-                marker=dict(size=12, color="red", symbol="circle"),
                 hoverinfo="skip",
                 showlegend=False,
             )
