@@ -15,6 +15,7 @@ Expected inputs (produced by the Snakemake pipeline)
 - data/manifests/japan_prcp_inventory.csv
 - data/manifests/japan_prcp_manifest.meta.json
 - data/monthly/japan_monthly_prcp.csv
+- data/latest/japan_latest_prcp.csv
 
 Outputs (overwritten)
 ---------------------
@@ -22,6 +23,7 @@ Outputs (overwritten)
 - code/app_data/japan_prcp_inventory.csv
 - code/app_data/japan_prcp_manifest.meta.json
 - code/app_data/japan_monthly_prcp.csv
+- code/app_data/japan_latest_prcp.csv
 """
 
 from pathlib import Path
@@ -33,6 +35,7 @@ DATA_DIR = PROJECT_ROOT / "data"
 META_DIR = DATA_DIR / "metadata"
 MANIFEST_DIR = DATA_DIR / "manifests"
 MONTHLY_DIR = DATA_DIR / "monthly"
+LATEST_DIR = DATA_DIR / "latest"
 
 APP_DATA_DIR = PROJECT_ROOT / "code" / "app_data"
 
@@ -56,6 +59,7 @@ def main() -> None:
         (MANIFEST_DIR / "japan_prcp_inventory.csv", APP_DATA_DIR / "japan_prcp_inventory.csv"),
         (MANIFEST_DIR / "japan_prcp_manifest.meta.json", APP_DATA_DIR / "japan_prcp_manifest.meta.json"),
         (MONTHLY_DIR / "japan_monthly_prcp.csv", APP_DATA_DIR / "japan_monthly_prcp.csv"),
+        (LATEST_DIR / "japan_latest_prcp.csv", APP_DATA_DIR / "japan_latest_prcp.csv"),
     ]
 
     for src, dst in files:

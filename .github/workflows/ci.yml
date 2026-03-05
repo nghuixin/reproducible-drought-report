@@ -39,4 +39,6 @@ jobs:
           test -f code/app_data/japan_stations.csv
           test -f code/app_data/japan_prcp_inventory.csv
           test -f code/app_data/japan_prcp_manifest.meta.json
+          test -f code/app_data/japan_monthly_prcp.csv
+          test -f code/app_data/japan_latest_prcp.csv
           echo "App bundle files present."

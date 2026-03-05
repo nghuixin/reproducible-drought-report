@@ -32,7 +32,7 @@ pip install -r requirements.txt
 snakemake app_data -j 1
 ```
 
-This runs `japan_manifest`, `japan_metadata`, and `app_data` (writes `code/app_data/*.csv` and `*.json`). It does **not** download all `by_station_japan` files (that would be `snakemake -j 1`).
+This runs `japan_manifest`, `japan_metadata`, and `app_data` (writes `code/app_data/*.csv` and `*.json`). It **requires** that `data/monthly/japan_monthly_prcp.csv` and `data/latest/japan_latest_prcp.csv` already exist (e.g. committed). It does **not** download all `by_station_japan` files (that would be `snakemake -j 1`).
 
 ### 3. Run the Shiny app (server mode)
 
@@ -54,10 +54,26 @@ python -m shinylive export code build
 
 Then open `build/index.html` in a browser, or serve the `build/` folder locally (e.g. `python -m http.server 8080 --directory build` and go to `http://localhost:8080`).
 
-### 5. Quick checks
+### 5. Committing app data for CI / deploy
+
+So that `snakemake app_data` (and thus CI and GitHub Pages deploy) can run **without** the heavy by-station sync, commit the precomputed CSVs:
+
+- **Monthly:** `data/monthly/japan_monthly_prcp.csv` (already tracked via `.gitignore` exceptions).
+- **Latest PRCP:** `data/latest/japan_latest_prcp.csv` (one row per station: `station_id`, `latest_date`, `prcp_mm`).
+
+To **generate** `data/latest/japan_latest_prcp.csv` (e.g. after a full sync), run once:
+
+```bash
+snakemake data/by_station_japan/_sync.done -j 1   # optional: only if you need a fresh sync
+snakemake data/latest/japan_latest_prcp.csv -j 1
+```
+
+Then add and commit both files (and any `.gitignore` edits). After that, CI and deploy only need `snakemake app_data` and the two CSVs are present from checkout.
+
+### 6. Quick checks
 
 - **App imports:**  
   `python -c "from code.app import app"`
 - **App data files exist:**  
-  `test -f code/app_data/japan_stations.csv && test -f code/app_data/japan_prcp_inventory.csv` (Unix) or equivalent in PowerShell.
+  `test -f code/app_data/japan_stations.csv && test -f code/app_data/japan_prcp_inventory.csv && test -f code/app_data/japan_monthly_prcp.csv && test -f code/app_data/japan_latest_prcp.csv` (Unix) or equivalent in PowerShell.
 

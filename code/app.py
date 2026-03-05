@@ -33,11 +33,13 @@ APP_META_PATH = APP_DATA_DIR / "japan_prcp_manifest.meta.json"
 APP_STATIONS_PATH = APP_DATA_DIR / "japan_stations.csv"
 APP_COVERAGE_PATH = APP_DATA_DIR / "japan_prcp_inventory.csv"
 APP_MONTHLY_PATH = APP_DATA_DIR / "japan_monthly_prcp.csv"
+APP_LATEST_PATH = APP_DATA_DIR / "japan_latest_prcp.csv"
 
 METADATA_PATH = APP_META_PATH if APP_META_PATH.exists() else MANIFEST_DIR / "japan_prcp_manifest.meta.json"
 STATIONS_PATH = APP_STATIONS_PATH if APP_STATIONS_PATH.exists() else META_DIR / "japan_stations.csv"
 COVERAGE_PATH = APP_COVERAGE_PATH if APP_COVERAGE_PATH.exists() else MANIFEST_DIR / "japan_prcp_inventory.csv"
 MONTHLY_PATH = APP_MONTHLY_PATH if APP_MONTHLY_PATH.exists() else PROJECT_ROOT / "data" / "monthly" / "japan_monthly_prcp.csv"
+LATEST_PATH = APP_LATEST_PATH if APP_LATEST_PATH.exists() else PROJECT_ROOT / "data" / "latest" / "japan_latest_prcp.csv"
 LOCAL_TZ  = timezone.utc
 
  
@@ -98,6 +100,13 @@ monthly_prcp_df: pd.DataFrame | None = None
 if MONTHLY_PATH.exists():
     monthly_prcp_df = pd.read_csv(MONTHLY_PATH)
     monthly_prcp_df["station_id"] = monthly_prcp_df["station_id"].astype(str)
+
+# Latest PRCP per station (date + value) for "latest precipitation" when user selects a location.
+latest_prcp_df: pd.DataFrame | None = None
+if LATEST_PATH.exists():
+    latest_prcp_df = pd.read_csv(LATEST_PATH)
+    latest_prcp_df["station_id"] = latest_prcp_df["station_id"].astype(str)
+    latest_prcp_df = latest_prcp_df.set_index("station_id")
 
 
 def load_station_prcp(station_id: str):
@@ -183,10 +192,8 @@ app_ui = ui.page_fluid(
                     "7": "Jul", "8": "Aug", "9": "Sep", "10": "Oct", "11": "Nov", "12": "Dec" },
                 selected=str(4),
             ),
-            ui.input_action_button("update_map", "Update map"),  
-            # If you want the old sidebar outputs back, uncomment:
-            # ui.output_ui("prcp_on_day"),
-            # ui.output_ui("zscore_recent_window"),
+            ui.input_action_button("update_map", "Update map"),
+            ui.output_ui("latest_prcp"),
         ),
         ui.div(
             ui.h4(""),
@@ -333,6 +340,23 @@ def server(input, output, session):
 
     @output
     @render.ui
+    def latest_prcp():
+        """Show latest precipitation (date + mm) for the selected station."""
+        sid = selected_station_id()
+        if sid is None or latest_prcp_df is None:
+            return ui.div()
+        if sid not in latest_prcp_df.index:
+            return ui.div(ui.p("Latest precipitation: —", class_="text-muted"))
+        row = latest_prcp_df.loc[sid]
+        return ui.div(
+            ui.p(
+                "Latest precipitation: ",
+                ui.tags.b(f"{row['latest_date']} — {row['prcp_mm']:.1f} mm"),
+            ),
+        )
+
+    @output
+    @render.ui
     def station_info():
         row = selected_station_row()
         if row is None:
@@ -453,5 +477,4 @@ def server(input, output, session):
         return fig
 
 
-app = App(app_ui, server)
 app = App(app_ui, server)

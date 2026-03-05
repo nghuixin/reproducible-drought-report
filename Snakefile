@@ -24,9 +24,13 @@ rule all:
         APP_DATA / "japan_prcp_inventory.csv",
         APP_DATA / "japan_prcp_manifest.meta.json",
         APP_DATA / "japan_monthly_prcp.csv",
+        APP_DATA / "japan_latest_prcp.csv",
 
         # by_station sync marker (stable target)
         DATA / "by_station_japan" / "_sync.done",
+
+        # latest PRCP per station (for app "latest precipitation" feature)
+        DATA / "latest" / "japan_latest_prcp.csv",
 
 
 rule japan_manifest:
@@ -52,10 +56,14 @@ rule app_data:
         metadata_csv = DATA / "metadata" / "japan_stations.csv",
         coverage_csv = DATA / "manifests" / "japan_prcp_inventory.csv",
         manifest_meta = DATA / "manifests" / "japan_prcp_manifest.meta.json",
+        monthly_csv = DATA / "monthly" / "japan_monthly_prcp.csv",
+        latest_csv = DATA / "latest" / "japan_latest_prcp.csv",
     output:
         APP_DATA / "japan_stations.csv",
         APP_DATA / "japan_prcp_inventory.csv",
         APP_DATA / "japan_prcp_manifest.meta.json",
+        APP_DATA / "japan_monthly_prcp.csv",
+        APP_DATA / "japan_latest_prcp.csv",
     shell:
         "python {CODE}/build_app_bundle.py"
 
@@ -80,3 +88,13 @@ rule japan_monthly_prcp:
         DATA / "monthly" / "japan_monthly_prcp.csv",
     shell:
         "python {CODE}/build_monthly_prcp.py"
+
+
+rule japan_latest_prcp:
+    """Latest PRCP date and value per station (from by-station gz); for app 'latest precipitation'."""
+    input:
+        done = DATA / "by_station_japan" / "_sync.done",
+    output:
+        DATA / "latest" / "japan_latest_prcp.csv",
+    shell:
+        "python {CODE}/build_latest_prcp.py"
