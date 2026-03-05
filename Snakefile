@@ -68,3 +68,13 @@ rule japan_by_station:
         python {CODE}/fetch_and_sync_data_by_station.py && \
         python -c "from pathlib import Path; p = Path(r'{output.done}'); p.parent.mkdir(parents=True, exist_ok=True); p.write_text('ok\n')"
         """
+
+
+rule japan_monthly_prcp:
+    """Precompute station × year × month PRCP sums so the app avoids 202 file reads per map update."""
+    input:
+        done = DATA / "by_station_japan" / "_sync.done",
+    output:
+        DATA / "monthly" / "japan_monthly_prcp.csv",
+    shell:
+        "python {CODE}/build_monthly_prcp.py"

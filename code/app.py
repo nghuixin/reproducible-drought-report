@@ -6,7 +6,9 @@ import pandas as pd
 import plotly.express as px
 from shiny import App, reactive, render, ui
 from shinywidgets import output_widget, render_widget
+import calendar
 import json
+import numpy as np
 from datetime import date, datetime, timezone
 
  
@@ -30,10 +32,12 @@ APP_DATA_DIR = Path(__file__).parent / "app_data"
 APP_META_PATH = APP_DATA_DIR / "japan_prcp_manifest.meta.json"
 APP_STATIONS_PATH = APP_DATA_DIR / "japan_stations.csv"
 APP_COVERAGE_PATH = APP_DATA_DIR / "japan_prcp_inventory.csv"
+APP_MONTHLY_PATH = APP_DATA_DIR / "japan_monthly_prcp.csv"
 
 METADATA_PATH = APP_META_PATH if APP_META_PATH.exists() else MANIFEST_DIR / "japan_prcp_manifest.meta.json"
 STATIONS_PATH = APP_STATIONS_PATH if APP_STATIONS_PATH.exists() else META_DIR / "japan_stations.csv"
 COVERAGE_PATH = APP_COVERAGE_PATH if APP_COVERAGE_PATH.exists() else MANIFEST_DIR / "japan_prcp_inventory.csv"
+MONTHLY_PATH = APP_MONTHLY_PATH if APP_MONTHLY_PATH.exists() else PROJECT_ROOT / "data" / "monthly" / "japan_monthly_prcp.csv"
 LOCAL_TZ  = timezone.utc
 
  
@@ -88,9 +92,16 @@ else:
 # Convenience: mapping from station_id -> metadata row
 stations_by_id = stations_df.set_index("station_id")
 
+# Precomputed monthly PRCP (station_id, year, month, prcp_sum_mm). If present, z-score map uses this
+# and avoids 202 file reads per "Update map"; otherwise we fall back to per-station file reads.
+monthly_prcp_df: pd.DataFrame | None = None
+if MONTHLY_PATH.exists():
+    monthly_prcp_df = pd.read_csv(MONTHLY_PATH)
+    monthly_prcp_df["station_id"] = monthly_prcp_df["station_id"].astype(str)
+
 
 def load_station_prcp(station_id: str):
-    path = f"data/by_station_japan/{station_id}.csv.gz"
+    path = PROJECT_ROOT / "data" / "by_station_japan" / f"{station_id}.csv.gz"
 
     df = pd.read_csv(
         path,
@@ -128,8 +139,11 @@ def load_station_prcp(station_id: str):
     # Convert units (tenths of mm → mm)
     df["PRCP_MM"] = df["DATA_VALUE"] / 10.0
 
-    # Parse date
+    # Parse date and add year/month for month_precip_by_year
     df["DATE"] = pd.to_datetime(df["DATE"], format="%Y%m%d")
+    df["YEAR"] = df["DATE"].dt.year
+    df["MONTH"] = df["DATE"].dt.month
+    df["DAY"] = df["DATE"].dt.day
 
     return df
 
@@ -160,13 +174,16 @@ app_ui = ui.page_fluid(
                 options={"placeholder": "Search by name or station ID..."},
             ),
             ui.h5("Precipitation 降水量指数 (mm)"),
-            ui.input_date(
-                "selected_day",
-                "Date 日付",
-                value=date(2000, 4, 1),
-                min=date(1945, 1, 1),
-                max=date.today(),  # always today
+           ui.input_numeric("selected_year", "Year 年", value=2000, min=1970, max=date.today().year),
+           ui.input_select(
+                "selected_month",
+                "Month 月",
+                choices={
+                    "1": "Jan", "2": "Feb", "3": "Mar", "4": "Apr", "5": "May", "6": "Jun",
+                    "7": "Jul", "8": "Aug", "9": "Sep", "10": "Oct", "11": "Nov", "12": "Dec" },
+                selected=str(4),
             ),
+            ui.input_action_button("update_map", "Update map"),  
             # If you want the old sidebar outputs back, uncomment:
             # ui.output_ui("prcp_on_day"),
             # ui.output_ui("zscore_recent_window"),
@@ -180,8 +197,74 @@ app_ui = ui.page_fluid(
 # ----------------------------------------------------------------------
 # Server
 # ----------------------------------------------------------------------
+def month_window(year: int, month: int, buffer_days: int = 3):
+    """
+    Returns (start, end) timestamps for the chosen month/year,
+    with end buffered by buffer_days.
+    """
+    start = pd.Timestamp(year=year, month=month, day=1)
+    last_day = calendar.monthrange(year, month)[1]
+    end = pd.Timestamp(year=year, month=month, day=last_day) - pd.Timedelta(days=buffer_days)
+
+    # Guard in case buffer would push end before start (only possible if buffer huge)
+    if end < start:
+        end = start
+
+    return start.normalize(), end.normalize()
+
+
+def month_precip_by_year(df: pd.DataFrame, month: int, min_year: int = 1970) -> pd.DataFrame:
+    """
+    For one station: precipitation totals for that month for each year >= min_year.
+    Requires df has YEAR, MONTH, PRCP_MM (we already precompute those in your cached loader).
+    """
+    if df.empty:
+        return pd.DataFrame(columns=["YEAR", "PRCP_SUM"])
+
+    d = df[(df["YEAR"] >= min_year) & (df["MONTH"] == month)]
+    out = d.groupby("YEAR", as_index=False).agg(PRCP_SUM=("PRCP_MM", "sum"))
+    return out
+
+ 
+
+def zscore_for_year(window_by_year: pd.DataFrame, target_year: int, min_hist_years: int = 25) -> Optional[float]:
+    if window_by_year.empty:
+        return None
+
+    x_row = window_by_year[window_by_year["YEAR"] == target_year]
+    if x_row.empty:
+        return None
+
+    hist = window_by_year[window_by_year["YEAR"] < target_year]["PRCP_SUM"].dropna()
+    if hist.shape[0] < min_hist_years:
+        return None
+
+    mu = float(hist.mean())
+    sigma = float(hist.std(ddof=1))
+    if not np.isfinite(sigma) or sigma == 0.0:
+        return None
+
+    x = float(x_row["PRCP_SUM"].iloc[0])
+    z = (x - mu) / sigma
+    return float(np.clip(z, -2, 2))
+
+
+
+
 
 def server(input, output, session):
+    committed_year = reactive.Value(2000)
+    committed_month = reactive.Value(4)
+
+    @reactive.Effect
+    @reactive.event(input.update_map)
+    def _commit_month_year():
+        y = int(input.selected_year())
+        m = int(input.selected_month())
+        y = min(y, date.today().year)
+        committed_year.set(y)
+        committed_month.set(m)
+
     @reactive.Calc
     def selected_station_id() -> Optional[str]:
         sid = input.station_id()
@@ -208,6 +291,45 @@ def server(input, output, session):
             "firstyear_prcp": int(row["firstyear_prcp"]),
             "lastyear_prcp": int(row["lastyear_prcp"]),
         }
+
+    @reactive.Calc
+    def stations_with_zscores() -> pd.DataFrame:
+        year = committed_year.get()
+        month = committed_month.get()
+
+        out = stations_df.copy()
+        out["z_score"] = np.nan
+
+        if monthly_prcp_df is not None:
+            # Use precomputed monthly table: in-memory only, instant.
+            for sid in out["station_id"].astype(str).tolist():
+                station_monthly = monthly_prcp_df[monthly_prcp_df["station_id"] == sid]
+                if station_monthly.empty:
+                    continue
+                month_rows = station_monthly[
+                    (station_monthly["month"] == month) & (station_monthly["year"] >= 1970)
+                ]
+                if month_rows.empty:
+                    continue
+                per_year = month_rows[["year", "prcp_sum_mm"]].copy()
+                per_year = per_year.rename(columns={"year": "YEAR", "prcp_sum_mm": "PRCP_SUM"})
+                z = zscore_for_year(per_year, target_year=year, min_hist_years=25)
+                if z is not None:
+                    out.loc[out["station_id"] == sid, "z_score"] = z
+            return out
+
+        # Fallback: read each station file (slow, 202 reads per update)
+        for sid in out["station_id"].astype(str).tolist():
+            try:
+                df = load_station_prcp(sid)
+            except FileNotFoundError:
+                continue
+            per_year = month_precip_by_year(df, month=month, min_year=1970)
+            z = zscore_for_year(per_year, target_year=year, min_hist_years=25)
+            if z is not None:
+                out.loc[out["station_id"] == sid, "z_score"] = z
+
+        return out
 
     @output
     @render.ui
@@ -242,103 +364,93 @@ def server(input, output, session):
     @render_widget
     def station_map():
         """
-        Plotly + OpenStreetMap map of all Japan stations, with the selected
-        station highlighted in red.
+        Plotly + OpenStreetMap map of all Japan stations. Dots are colored by
+        z-score for the committed year/month (red = drier, blue = wetter).
+        Selected station is highlighted with a red ring.
         """
         sid = selected_station_id()
-        fig = px.scatter_mapbox(
-            stations_df,
-            lat="latitude",
-            lon="longitude",
-            hover_name="name",
-            # Only show station_id in hover; hide lat/lon.
-            hover_data={
-                "station_id": True,
-                "latitude": False,
-                "longitude": False,
-            },
-            zoom=3.5,
-            center={"lat": 35.0, "lon": 135.0},
-        )
-        fig.update_layout(
+        z_df = stations_with_zscores()
+
+        # Color by z-score: red = dry (low), blue = wet (high). NaN → gray.
+        has_z = z_df["z_score"].notna()
+        with_z = z_df[has_z]
+        no_z = z_df[~has_z]
+
+        if with_z.empty:
+            # No z-scores at all: single gray scatter
+            fig = px.scatter_mapbox(
+                z_df,
+                lat="latitude",
+                lon="longitude",
+                hover_name="name",
+                hover_data={"station_id": True, "latitude": False, "longitude": False},
+                zoom=3.5,
+                center={"lat": 35.0, "lon": 135.0},
+            )
+            fig.update_traces(marker=dict(size=7, color="lightgray"))
+        else:
+            fig = px.scatter_mapbox(
+                with_z,
+                lat="latitude",
+                lon="longitude",
+                color="z_score",
+                color_continuous_scale="RdBu_r",
+                range_color=(-2.0, 2.0),
+                hover_name="name",
+                hover_data={
+                    "station_id": True,
+                    "z_score": ":.2f",
+                    "latitude": False,
+                    "longitude": False,
+                },
+                zoom=3.5,
+                center={"lat": 35.0, "lon": 135.0},
+            )
+            fig.update_traces(
+                customdata=with_z[["name", "station_id", "z_score"]],
+                hovertemplate=(
+                    "Station: %{customdata[0]}<br>ID: %{customdata[1]}<br>"
+                    "Z-score: %{customdata[2]:.2f}<extra></extra>"
+                ),
+                marker=dict(size=7),
+            )
+            # Gray dots for stations with no z-score
+            if not no_z.empty:
+                fig.add_scattermapbox(
+                    lat=no_z["latitude"],
+                    lon=no_z["longitude"],
+                    mode="markers",
+                    marker=dict(size=7, color="lightgray", symbol="circle"),
+                    hoverinfo="skip",
+                    showlegend=False,
+                )
+
+        layout_kw = dict(
             mapbox_style="open-street-map",
             margin=dict(l=10, r=10, t=0, b=0),
             height=450,
             hoverlabel=dict(
-            bgcolor="rgba(0,0,0,0.75)",  # hover box background
-            font_color="white",
-            font=dict(family="Noto Serif Condensed Regular", size=12),      # text color
-            #font_size=12
-        ),
+                bgcolor="rgba(0,0,0,0.75)",
+                font_color="white",
+                font=dict(family="Noto Serif Condensed Regular", size=12),
+            ),
         )
+        if has_z.any():
+            layout_kw["coloraxis_colorbar"] = dict(title="Z-score (month PRCP)")
+        fig.update_layout(**layout_kw)
 
-        fig.update_traces(
-        customdata=stations_df[["name", "station_id"]],
-        hovertemplate="Station: %{customdata[0]}<br>ID: %{customdata[1]}<extra></extra>",
-        marker=dict(
-        size=7,
-        color="darkblue"   # <-- change station dot color here
-    )
-        )
-
- 
-
-        # Highlight selected station
+        # Highlight selected station on top
         if sid is not None and sid in stations_by_id.index:
             row = stations_by_id.loc[sid]
             fig.add_scattermapbox(
                 lat=[row["latitude"]],
                 lon=[row["longitude"]],
                 mode="markers",
-                marker=dict(size=12, color="red"),
+                marker=dict(size=12, color="red", symbol="circle"),
                 hoverinfo="skip",
                 showlegend=False,
             )
 
-        # NOTE: Map-click → station selection is NOT wired yet.
-        # Doing that cleanly requires hooking Plotly click events (FigureWidget)
-        # through shinywidgets and updating input.station_id from a callback.
-        return fig
-
-    @output
-    @render.plot
-    def prcp_timeseries():
-        sid = selected_station_id()
-        if sid is None:
-            import matplotlib.pyplot as plt
-
-            fig, ax = plt.subplots(figsize=(8, 3))
-            ax.text(
-                0.5,
-                0.5,
-                "No station selected.",
-                ha="center",
-                va="center",
-            )
-            ax.set_axis_off()
-            fig.tight_layout()
-            return fig
-
-        df = load_station_prcp(sid)
-
-        import matplotlib.pyplot as plt
-
-        fig, ax = plt.subplots(figsize=(8, 3))
-        if df.empty:
-            ax.text(
-                0.5,
-                0.5,
-                f"No PRCP data for {sid}.",
-                ha="center",
-                va="center",
-            )
-            ax.set_axis_off()
-        else:
-            ax.plot(df["DATE"], df["PRCP_MM"], linewidth=0.8)
-            ax.set_xlabel("Date")
-            ax.set_ylabel("Precipitation (mm)")
-            ax.set_title(f"Daily precipitation (mm) — {sid}")
-        fig.tight_layout()
         return fig
 
 
