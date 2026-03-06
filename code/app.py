@@ -176,7 +176,7 @@ app_ui = ui.page_fluid(
     ui.p(f"Updated 更新 {updated_as_of}", class_="text-muted mb-3"),
     ui.layout_sidebar(
         ui.sidebar(
-            ui.h5("Station 気象庁", class_="mt-0 mb-2"),
+            ui.h5("Station 気象庁", class_="mb-2"),
             ui.input_selectize(
                 "station_id",
                 "Location and ID 地点とID",
@@ -184,10 +184,10 @@ app_ui = ui.page_fluid(
                 selected=first_station,
                 options={"placeholder": "Search by name or station ID..."},
             ),
-            ui.div(ui.output_ui("station_info"), class_="mt-3 mb-3"),
+            ui.div(ui.output_ui("station_info"), class_="mb-2"),
             ui.h6("Latest Precipitation 最新降水量", class_="mb-2"),
             ui.output_ui("precipitation_for_day"),
-            ui.h6("Drought Index 干旱指数", class_="mt-4 mb-2"),
+            ui.h6("Drought Index 干旱指数", class_="mb-2"),
             ui.input_numeric("selected_year", "Year 年", value=2000, min=1970, max=date.today().year),
             ui.input_select(
                 "selected_month",
@@ -202,20 +202,20 @@ app_ui = ui.page_fluid(
         ui.div(
             output_widget("station_map"),
             ui.div(
-                ui.h5("How the z-score (drought index) is calculated", class_="mt-4 mb-3"),
+                ui.h5("Drought Index Calculation 干旱指数计算", class_="mb-3"),
                 ui.p(
-                    "For each station and the month you choose (e.g. April), we use that month’s total precipitation in every year.",
+                    "For each selected station and month(e.g. April), that month’s total precipitation is calculated",
                     class_="text-muted mb-2",
                 ),
                 ui.p(
-                    "For the year you select, the z-score is: (that year’s value − mean of all earlier years) ÷ standard deviation of those earlier years. "
+                    "Selected year and month's precipitation  − mean of total precipitation of selected month in all years) ÷ standard deviation of those earlier years. "
                     "The result is clipped to the range −2 to +2.",
                     class_="text-muted mb-2",
                 ),
                 ui.p(
-                    "Red = low precipitation (negative z-score); blue = high precipitation (positive z-score). "
-                    "At least 25 years of history are required to compute the index.",
-                    class_="text-muted mb-0",
+                    "Negative z-scores indicate low precipitation (red); positive z-scores indicate high precipitation (blue). "
+                    "At least 25 years of history for given month and station is required to compute the index.",
+                    class_="text-muted mb-2",
                 ),
             ),
         ),
@@ -381,8 +381,10 @@ def server(input, output, session):
 
         return ui.div(
             ui.p(ui.tags.b(f"{name} ({sid})"), class_="mb-1"),
-            ui.p(f"Latitude: {lat}  ·  Longitude: {lon}", class_="mb-1 small text-muted"),
-            ui.p(f"Elevation: {elev if elev != '' else 'N/A'} m  ·  Coverage: {cov_text}", class_="mb-0 small text-muted"),
+            ui.p(f"Latitude: {lat}", class_="mb-1 small text-muted"),
+            ui.p(f"Longitude: {lon}", class_="mb-1 small text-muted"),
+            ui.p(f"Elevation: {elev if elev != '' else 'N/A'} m", class_="mb-1 small text-muted"),
+            ui.p(f"Coverage: {cov_text}", class_="mb-0 small text-muted"),
         )
 
     @output
@@ -400,11 +402,9 @@ def server(input, output, session):
         v = row["prcp_mm"]
         if v is None or (isinstance(v, (int, float)) and np.isnan(v)):
             return ui.p(f"Latest precipitation could not be found on", class_="text-muted")
-        return ui.p(f"Date:  {d}  · Precipitation : {float(v):.1f} mm")
-
-    
-
-    
+        return ui.div(
+            ui.p(f"Date:  {d}", class_="mb-0 small text-muted"),
+            ui.p(f"Precipitation : {float(v):.1f} mm", class_="mb-0 small text-muted"))
 
     @output
     @render_widget

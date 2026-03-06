@@ -13,7 +13,6 @@ from __future__ import annotations
 from pathlib import Path
 import pandas as pd
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 BY_STATION_DIR = PROJECT_ROOT / "data" / "by_station_japan"
 OUT_DIR = PROJECT_ROOT / "data" / "latest"
