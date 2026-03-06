@@ -79,7 +79,7 @@ def make_label(row: pd.Series) -> str:
     name = str(row.get("name", "")).strip()
     sid = str(row["station_id"]).strip()
     if name:
-        return f"{name} ({sid})"
+        return f"{name}({sid})"
     return sid
 
 stations_df["label"] = stations_df.apply(make_label, axis=1)
@@ -173,13 +173,12 @@ app_ui = ui.page_fluid(
         f"Drought Index in Japan 干旱指数",
         window_title="Japan Drought Index",
     ),
-    ui.p(f"Updated 更新 {updated_as_of}", class_="text-muted mb-3"),
+    ui.p(f"Updated 更新 {updated_as_of}", class_="text-muted mb-4"),
     ui.layout_sidebar(
         ui.sidebar(
-            ui.h5("Station 気象庁", class_="mb-2"),
             ui.input_selectize(
                 "station_id",
-                "Location and ID 地点とID",
+                "Station 気象庁",
                 choices=dict(zip(stations_sorted["station_id"], stations_sorted["label"])),
                 selected=first_station,
                 options={"placeholder": "Search by name or station ID..."},
@@ -187,6 +186,7 @@ app_ui = ui.page_fluid(
             ui.div(ui.output_ui("station_info"), class_="mb-2"),
             ui.h6("Latest Precipitation 最新降水量", class_="mb-2"),
             ui.output_ui("precipitation_for_day"),
+
             ui.h6("Drought Index 干旱指数", class_="mb-2"),
             ui.input_numeric("selected_year", "Year 年", value=2000, min=1970, max=date.today().year),
             ui.input_select(
@@ -202,7 +202,7 @@ app_ui = ui.page_fluid(
         ui.div(
             output_widget("station_map"),
             ui.div(
-                ui.h5("Drought Index Calculation 干旱指数计算", class_="mb-3"),
+                ui.h5("Drought Index Calculation 干旱指数计算", class_="mb-2"),
                 ui.p(
                     "For each selected station and month(e.g. April), that month’s total precipitation is calculated",
                     class_="text-muted mb-2",
@@ -380,11 +380,11 @@ def server(input, output, session):
             cov_text = "unknown"
 
         return ui.div(
-            ui.p(ui.tags.b(f"{name} ({sid})"), class_="mb-1"),
+            ui.p(f"ID: {sid}", class_="mb-1 small text-muted"),
             ui.p(f"Latitude: {lat}", class_="mb-1 small text-muted"),
             ui.p(f"Longitude: {lon}", class_="mb-1 small text-muted"),
             ui.p(f"Elevation: {elev if elev != '' else 'N/A'} m", class_="mb-1 small text-muted"),
-            ui.p(f"Coverage: {cov_text}", class_="mb-0 small text-muted"),
+            ui.p(f"Data Availability: {cov_text}", class_="mb-0 small text-muted"),
         )
 
     @output
@@ -429,7 +429,7 @@ def server(input, output, session):
                 lat="latitude",
                 lon="longitude",
                 hover_name="name",
-                hover_data={"station_id": True, "latitude": False, "longitude": False},
+                hover_data={"station_id": True},
                 zoom=3.5,
                 center={"lat": 35.0, "lon": 135.0},
             )
@@ -458,7 +458,7 @@ def server(input, output, session):
                     "Station: %{customdata[0]}<br>ID: %{customdata[1]}<br>"
                     "Z-score: %{customdata[2]:.2f}<extra></extra>"
                 ),
-                marker=dict(size=7),
+                marker=dict(size=8),
             )
             # Gray dots for stations with no z-score
             if not no_z.empty:
@@ -466,7 +466,7 @@ def server(input, output, session):
                     lat=no_z["latitude"],
                     lon=no_z["longitude"],
                     mode="markers",
-                    marker=dict(size=7, color="lightgray", symbol="circle"),
+                    marker=dict(size=6, color="black", symbol="circle"),
                     hoverinfo="skip",
                     showlegend=False,
                 )
@@ -481,8 +481,9 @@ def server(input, output, session):
                 font=dict(family="Noto Serif Condensed Regular", size=12),
             ),
         )
+
         if has_z.any():
-            layout_kw["coloraxis_colorbar"] = dict(title="Z-score (red = dry, blue = wet)")
+            layout_kw["coloraxis_colorbar"] = dict(title="")
         fig.update_layout(**layout_kw)
 
         # Highlight selected station on top
@@ -491,7 +492,11 @@ def server(input, output, session):
             fig.add_scattermapbox(
                 lat=[row["latitude"]],
                 lon=[row["longitude"]],
-                mode="markers",
+                mode="markers",   
+                marker=dict(
+                    size=18,
+                    symbol="triangle-up",  # outline-only circle
+                ),
                 hoverinfo="skip",
                 showlegend=False,
             )
