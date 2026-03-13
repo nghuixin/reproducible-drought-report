@@ -188,7 +188,7 @@ app_ui = ui.page_fluid(
             ui.output_ui("precipitation_for_day"),
 
             ui.h6("Drought Index 干旱指数", class_="mb-2"),
-            ui.input_numeric("selected_year", "Year 年", value=2000, min=1970, max=date.today().year),
+            ui.input_numeric("selected_year", "Year 年", value=2000, min=1949, max=date.today().year),
             ui.input_select(
                 "selected_month",
                 "Month 月",
@@ -240,7 +240,7 @@ def month_window(year: int, month: int, buffer_days: int = 3):
     return start.normalize(), end.normalize()
 
 
-def month_precip_by_year(df: pd.DataFrame, month: int, min_year: int = 1970) -> pd.DataFrame:
+def month_precip_by_year(df: pd.DataFrame, month: int, min_year: int = 1949) -> pd.DataFrame:
     """
     For one station: precipitation totals for that month for each year >= min_year.
     Requires df has YEAR, MONTH, PRCP_MM (we already precompute those in your cached loader).
@@ -254,7 +254,7 @@ def month_precip_by_year(df: pd.DataFrame, month: int, min_year: int = 1970) -> 
 
  
 
-def zscore_for_year(window_by_year: pd.DataFrame, target_year: int, min_hist_years: int = 25) -> Optional[float]:
+def zscore_for_year(window_by_year: pd.DataFrame, target_year: int, min_hist_years: int = 10) -> Optional[float]:
     if window_by_year.empty:
         return None
 
@@ -343,7 +343,7 @@ def server(input, output, session):
                     continue
                 per_year = month_rows[["year", "prcp_sum_mm"]].copy()
                 per_year = per_year.rename(columns={"year": "YEAR", "prcp_sum_mm": "PRCP_SUM"})
-                z = zscore_for_year(per_year, target_year=year, min_hist_years=25)
+                z = zscore_for_year(per_year, target_year=year, min_hist_years=10)
                 if z is not None:
                     out.loc[out["station_id"] == sid, "z_score"] = z
             return out
@@ -355,7 +355,7 @@ def server(input, output, session):
             except FileNotFoundError:
                 continue
             per_year = month_precip_by_year(df, month=month, min_year=1)
-            z = zscore_for_year(per_year, target_year=year, min_hist_years=25)
+            z = zscore_for_year(per_year, target_year=year, min_hist_years=10)
             if z is not None:
                 out.loc[out["station_id"] == sid, "z_score"] = z
 
